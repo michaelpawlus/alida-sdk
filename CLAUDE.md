@@ -22,11 +22,13 @@ Exit codes: 0 = success, 1 = error, 2 = not found.
 ## Environment Variables
 
 - `ALIDA_API_KEY` (required) — API key from Alida Platform > Product Settings > API
-- `ALIDA_BASE_URL` (required) — e.g., `https://api.na1.alida.com/v2/applications/yourCommunity`
-- `ALIDA_USERNAME` (optional) — Username for OAuth token flow
-- `ALIDA_PASSWORD` (optional) — Password for OAuth token flow
+- `ALIDA_BASE_URL` (required, or `ALIDA_REGION`) — e.g., `https://api.na1.alida.com`
+- `ALIDA_REGION` (alternative to `ALIDA_BASE_URL`) — e.g., `na1`, `eu1` — constructs base URL automatically
+- `ALIDA_COMMUNITY_KEY` (required) — community/panel key, e.g., `panel_thebuckeyeroom`
+- `ALIDA_CLIENT_ID` (optional) — OAuth2 client ID for client_credentials flow
+- `ALIDA_CLIENT_SECRET` (optional) — OAuth2 client secret for client_credentials flow
 
-When `ALIDA_USERNAME`/`ALIDA_PASSWORD` are set, the SDK uses the full OAuth bearer token flow. Otherwise, it uses the API key directly.
+When `ALIDA_CLIENT_ID`/`ALIDA_CLIENT_SECRET` are set, the SDK uses OAuth2 client_credentials to obtain a bearer token. Otherwise, it uses the API key directly.
 
 ## Architecture
 
@@ -35,8 +37,8 @@ src/alida_sdk/
   exceptions.py  — Custom exception hierarchy (AlidaError base)
   output.py      — JSON stdout / error output helpers
   models.py      — Dataclasses: Survey, SurveyResponse, BatchExportStatus
-  auth.py        — TokenManager: env-var config, token fetch/cache/refresh
-  client.py      — AlidaClient: httpx wrapper, retry (429/5xx), pagination, batch polling
+  auth.py        — TokenManager: env-var config, OAuth2 client_credentials, token cache/refresh
+  client.py      — AlidaClient: httpx wrapper, retry (429/5xx), link-based pagination, batch polling
   surveys.py     — SurveyResource: list, get, get_responses (3-step batch export)
   cli.py         — Typer CLI with surveys sub-command group
 ```
@@ -52,4 +54,6 @@ pytest
 
 - Surveys are called "activities" in the API
 - Response export uses an async batch workflow: POST to start -> poll status -> download from URL
-- Pagination is offset-based with `limit` and `offset` query params
+- Pagination is link-based: follow `rel=next` links in the `links` array
+- Auth uses OAuth2 client_credentials grant: POST to `/oauth2/token` with HTTP Basic (client_id:client_secret) + x-api-key header
+- API paths are under `/v1/applications/{community_key}/`

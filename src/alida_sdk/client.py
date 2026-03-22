@@ -11,6 +11,7 @@ from alida_sdk.auth import TokenManager
 from alida_sdk.exceptions import (
     AlidaError,
     AuthenticationError,
+    ConfigurationError,
     NotFoundError,
     RateLimitError,
     ServerError,
@@ -23,17 +24,38 @@ class AlidaClient:
     def __init__(
         self,
         base_url: str | None = None,
+        community_key: str | None = None,
         token_manager: TokenManager | None = None,
     ):
         self._token_manager = token_manager or TokenManager.from_env()
-        self._base_url = (
-            base_url or os.environ.get("ALIDA_BASE_URL", "")
-        ).rstrip("/")
+
+        raw_base = (base_url or os.environ.get("ALIDA_BASE_URL") or "").rstrip("/")
+        if not raw_base:
+            region = os.environ.get("ALIDA_REGION")
+            if region:
+                raw_base = f"https://api.{region}.alida.com"
+            else:
+                raise ConfigurationError(
+                    "ALIDA_BASE_URL or ALIDA_REGION environment variable must be set"
+                )
+
+        self._base_url = raw_base
+        self._community_key = community_key or os.environ.get("ALIDA_COMMUNITY_KEY", "")
+        if not self._community_key:
+            raise ConfigurationError(
+                "ALIDA_COMMUNITY_KEY environment variable must be set"
+            )
+
+        self._api_prefix = f"{self._base_url}/v1/applications/{self._community_key}"
         self._http = httpx.Client(timeout=30.0)
 
     def _request(self, method: str, path: str, **kwargs: object) -> httpx.Response:
         """Core request with auth injection, 1 retry on 429/5xx, error mapping."""
-        url = f"{self._base_url}/{path.lstrip('/')}"
+        if path.startswith("http"):
+            url = path
+        else:
+            url = f"{self._api_prefix}/{path.lstrip('/')}"
+
         headers = {
             **self._token_manager.auth_headers(),
             **kwargs.pop("headers", {}),  # type: ignore[union-attr]
@@ -77,17 +99,15 @@ class AlidaClient:
         self,
         path: str,
         *,
-        limit: int = 100,
         params: dict | None = None,
     ) -> list[dict]:
-        """Auto-paginate through all results using offset-based pagination."""
+        """Auto-paginate using link-based rel=next pagination."""
         all_items: list[dict] = []
-        offset = 0
-        params = dict(params or {})
+        url: str | None = path
+        request_params = dict(params or {})
 
-        while True:
-            params.update({"limit": limit, "offset": offset})
-            data = self.get(path, params=params)
+        while url:
+            data = self.get(url, params=request_params)
 
             # Handle various response envelope shapes
             if isinstance(data, list):
@@ -98,9 +118,15 @@ class AlidaClient:
             if not items:
                 break
             all_items.extend(items)
-            if len(items) < limit:
-                break
-            offset += limit
+
+            # Follow rel=next link for pagination
+            url = None
+            if isinstance(data, dict):
+                for link in data.get("links", []):
+                    if link.get("rel") == "next" and link.get("href"):
+                        url = link["href"]
+                        request_params = {}  # next URL includes params
+                        break
 
         return all_items
 

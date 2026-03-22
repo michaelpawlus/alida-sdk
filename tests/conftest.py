@@ -23,7 +23,8 @@ def mock_token_manager() -> TokenManager:
 def mock_client(mock_token_manager: TokenManager) -> AlidaClient:
     """AlidaClient with a mock token manager and test base URL."""
     return AlidaClient(
-        base_url="https://api.test.alida.com/v2/applications/testapp",
+        base_url="https://api.test.alida.com",
+        community_key="testapp",
         token_manager=mock_token_manager,
     )
 
