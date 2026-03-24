@@ -14,11 +14,16 @@ from rich.table import Table
 from alida_sdk.client import AlidaClient
 from alida_sdk.exceptions import AlidaError, NotFoundError
 from alida_sdk.output import emit_error, emit_json
+from alida_sdk.questions import QuestionResource
 from alida_sdk.surveys import SurveyResource
 
 app = typer.Typer(name="alida-sdk", help="Alida CXM SDK — survey data extraction")
 surveys_app = typer.Typer(help="Survey operations")
 app.add_typer(surveys_app, name="surveys")
+datasets_app = typer.Typer(help="Dataset operations")
+app.add_typer(datasets_app, name="datasets")
+questions_app = typer.Typer(help="Question operations (via datasets)")
+app.add_typer(questions_app, name="questions")
 
 console = Console(stderr=True)
 
@@ -174,3 +179,118 @@ def surveys_responses(
     finally:
         if output_file and dest is not sys.stdout:
             dest.close()
+
+
+@datasets_app.command("list")
+def datasets_list(
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output as JSON to stdout")
+    ] = False,
+) -> None:
+    """List all datasets (use dataset IDs for questions commands)."""
+    try:
+        with AlidaClient() as client:
+            items = client.get_paginated("datasets")
+    except AlidaError as e:
+        if json_output:
+            emit_error(str(e), 1)
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+    if json_output:
+        emit_json(items)
+        return
+
+    table = Table(title="Datasets")
+    table.add_column("ID", style="cyan")
+    table.add_column("Name")
+
+    for item in items:
+        table.add_row(str(item.get("id", "")), item.get("name", ""))
+
+    console.print(table)
+
+
+@questions_app.command("list")
+def questions_list(
+    dataset_id: Annotated[str, typer.Argument(help="Dataset ID (from 'datasets list')")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output as JSON to stdout")
+    ] = False,
+) -> None:
+    """List all questions for a dataset."""
+    try:
+        with AlidaClient() as client:
+            resource = QuestionResource(client)
+            questions = resource.list_questions(dataset_id)
+    except NotFoundError as e:
+        if json_output:
+            emit_error("Dataset not found", 2)
+        console.print(f"[red]Dataset not found:[/red] {e}")
+        raise typer.Exit(2)
+    except AlidaError as e:
+        if json_output:
+            emit_error(str(e), 1)
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+    if json_output:
+        emit_json([q.to_dict() for q in questions])
+        return
+
+    table = Table(title=f"Questions for Dataset {dataset_id}")
+    table.add_column("ID", style="cyan")
+    table.add_column("Text")
+    table.add_column("Type", style="green")
+    table.add_column("Options", style="dim")
+
+    for q in questions:
+        option_count = str(len(q.answer_options)) if q.answer_options else "—"
+        table.add_row(q.id, q.text, q.type or "", option_count)
+
+    console.print(table)
+
+
+@questions_app.command("get")
+def questions_get(
+    dataset_id: Annotated[str, typer.Argument(help="Dataset ID (from 'datasets list')")],
+    question_id: Annotated[str, typer.Argument(help="Question ID")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output as JSON to stdout")
+    ] = False,
+) -> None:
+    """Get details for a single question, including answer options."""
+    try:
+        with AlidaClient() as client:
+            resource = QuestionResource(client)
+            question = resource.get_question(dataset_id, question_id)
+    except NotFoundError as e:
+        if json_output:
+            emit_error("Question not found", 2)
+        console.print(f"[red]Question not found:[/red] {e}")
+        raise typer.Exit(2)
+    except AlidaError as e:
+        if json_output:
+            emit_error(str(e), 1)
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+    if json_output:
+        emit_json(question.to_dict())
+        return
+
+    console.print(f"[bold]ID:[/bold] {question.id}")
+    console.print(f"[bold]Text:[/bold] {question.text}")
+    console.print(f"[bold]Type:[/bold] {question.type or 'N/A'}")
+    console.print(f"[bold]Dataset:[/bold] {question.survey_id}")
+
+    if question.answer_options:
+        console.print(f"\n[bold]Answer Options ({len(question.answer_options)}):[/bold]")
+        table = Table()
+        table.add_column("ID", style="cyan")
+        table.add_column("Text")
+
+        for opt in question.answer_options:
+            table.add_row(opt.id, opt.text)
+
+        console.print(table)

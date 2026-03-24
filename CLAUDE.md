@@ -13,6 +13,15 @@ alida-sdk surveys get SURVEY_ID [--json]
 
 # Export survey responses (uses async batch workflow)
 alida-sdk surveys responses SURVEY_ID [--json] [--csv] [--output FILE]
+
+# List all datasets (needed to get dataset IDs for questions)
+alida-sdk datasets list [--json]
+
+# List all questions for a dataset
+alida-sdk questions list DATASET_ID [--json]
+
+# Get question details with answer options
+alida-sdk questions get DATASET_ID QUESTION_ID [--json]
 ```
 
 All commands support `--json` for machine-readable output to stdout. Human-readable output goes to stderr.
@@ -36,11 +45,12 @@ When `ALIDA_CLIENT_ID`/`ALIDA_CLIENT_SECRET` are set, the SDK uses OAuth2 client
 src/alida_sdk/
   exceptions.py  — Custom exception hierarchy (AlidaError base)
   output.py      — JSON stdout / error output helpers
-  models.py      — Dataclasses: Survey, SurveyResponse, BatchExportStatus
+  models.py      — Dataclasses: Survey, SurveyResponse, Question, AnswerOption, BatchExportStatus
   auth.py        — TokenManager: env-var config, OAuth2 client_credentials, token cache/refresh
   client.py      — AlidaClient: httpx wrapper, retry (429/5xx), link-based pagination, batch polling
   surveys.py     — SurveyResource: list, get, get_responses (3-step batch export)
-  cli.py         — Typer CLI with surveys sub-command group
+  questions.py   — QuestionResource: list, get (via datasets/concepts API)
+  cli.py         — Typer CLI with surveys, datasets, and questions sub-command groups
 ```
 
 ## Development
@@ -57,3 +67,6 @@ pytest
 - Pagination is link-based: follow `rel=next` links in the `links` array
 - Auth uses OAuth2 client_credentials grant: POST to `/oauth2/token` with HTTP Basic (client_id:client_secret) + x-api-key header
 - API paths are under `/v1/applications/{community_key}/`
+- **Activities and datasets are separate ID spaces**: activities come from `/activities`, datasets from `/datasets`. They do not share IDs.
+- **Questions** live under datasets as "concepts": `GET datasets/{id}/concepts` returns all concepts; filter by `"question"` tag to get questions. Each concept has `extraData` with `text`, `questionType`, and `choices` (answer options).
+- System questions (DisplayType, RespondentLocale) are tagged `systemquestion` and excluded by default.
