@@ -94,6 +94,7 @@ class QuestionResource:
         return Question(
             id=str(data.get("id", "")),
             survey_id=dataset_id,
+            name=data.get("name", ""),
             text=text,
             type=question_type,
             answer_options=[

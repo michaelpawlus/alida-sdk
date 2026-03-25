@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import csv
-import io
+import json
 import sys
 from typing import Annotated, Optional
 
@@ -13,9 +12,10 @@ from rich.table import Table
 
 from alida_sdk.client import AlidaClient
 from alida_sdk.exceptions import AlidaError, NotFoundError
-from alida_sdk.output import emit_error, emit_json
+from alida_sdk.output import emit_csv, emit_error, emit_json, output_dest
 from alida_sdk.questions import QuestionResource
 from alida_sdk.surveys import SurveyResource
+from alida_sdk.transforms import strip_html, transform_responses
 
 app = typer.Typer(name="alida-sdk", help="Alida CXM SDK — survey data extraction")
 surveys_app = typer.Typer(help="Survey operations")
@@ -33,6 +33,12 @@ def surveys_list(
     json_output: Annotated[
         bool, typer.Option("--json", help="Output as JSON to stdout")
     ] = False,
+    csv_output: Annotated[
+        bool, typer.Option("--csv", help="Output as CSV")
+    ] = False,
+    output_file: Annotated[
+        Optional[str], typer.Option("--output", "-o", help="Write output to file")
+    ] = None,
 ) -> None:
     """List all surveys."""
     try:
@@ -52,6 +58,22 @@ def surveys_list(
 
     if json_output:
         emit_json([s.to_dict() for s in surveys])
+        return
+
+    if csv_output:
+        headers = ["id", "name", "status", "type", "created_at"]
+        rows = [
+            {
+                "id": s.id,
+                "name": s.name,
+                "status": s.status,
+                "type": s.type or "",
+                "created_at": s.created_at or "",
+            }
+            for s in surveys
+        ]
+        with output_dest(output_file) as dest:
+            emit_csv(headers, rows, dest)
         return
 
     table = Table(title="Surveys")
@@ -114,13 +136,26 @@ def surveys_responses(
     output_file: Annotated[
         Optional[str], typer.Option("--output", "-o", help="Write output to file")
     ] = None,
+    dataset_id: Annotated[
+        Optional[str],
+        typer.Option("--dataset-id", help="Dataset ID for human-readable column headers"),
+    ] = None,
 ) -> None:
     """Export all responses for a survey."""
+    structured = json_output or csv_output
     try:
         with AlidaClient() as client:
             resource = SurveyResource(client)
-            console.print(f"Exporting responses for survey {survey_id}...")
+            if not structured:
+                console.print(f"Exporting responses for survey {survey_id}...")
             responses = resource.get_responses(survey_id)
+
+            questions = None
+            if dataset_id:
+                if not structured:
+                    console.print(f"Fetching question metadata from dataset {dataset_id}...")
+                qr = QuestionResource(client)
+                questions = qr.list_questions(dataset_id)
     except NotFoundError as e:
         if json_output:
             emit_error("Survey not found", 2)
@@ -132,36 +167,26 @@ def surveys_responses(
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
 
-    console.print(f"Retrieved {len(responses)} responses.")
+    if not structured:
+        console.print(f"Retrieved {len(responses)} responses.")
 
-    dest = open(output_file, "w") if output_file else sys.stdout  # noqa: SIM115
-
-    try:
+    with output_dest(output_file) as dest:
         if json_output:
-            import json
-
-            dest.write(json.dumps([r.to_dict() for r in responses], indent=2, default=str))
+            if questions:
+                headers, rows = transform_responses(responses, questions)
+                dest.write(json.dumps(rows, indent=2, default=str))
+            else:
+                dest.write(
+                    json.dumps(
+                        [r.to_dict() for r in responses], indent=2, default=str
+                    )
+                )
             dest.write("\n")
         elif csv_output:
             if not responses:
                 return
-            # Collect all keys from response data for CSV columns
-            all_keys = ["id", "survey_id", "submitted_at"]
-            data_keys: set[str] = set()
-            for r in responses:
-                data_keys.update(r.data.keys())
-            all_keys.extend(sorted(data_keys))
-
-            writer = csv.DictWriter(dest, fieldnames=all_keys)
-            writer.writeheader()
-            for r in responses:
-                row = {
-                    "id": r.id,
-                    "survey_id": r.survey_id,
-                    "submitted_at": r.submitted_at,
-                    **r.data,
-                }
-                writer.writerow(row)
+            headers, rows = transform_responses(responses, questions)
+            emit_csv(headers, rows, dest)
         else:
             # Rich table output to stderr
             table = Table(title=f"Responses for Survey {survey_id}")
@@ -170,15 +195,14 @@ def surveys_responses(
             table.add_column("Fields", style="dim")
 
             for r in responses:
-                fields = ", ".join(f"{k}={v}" for k, v in list(r.data.items())[:5])
+                fields = ", ".join(
+                    f"{k}={v}" for k, v in list(r.data.items())[:5]
+                )
                 if len(r.data) > 5:
                     fields += f" (+{len(r.data) - 5} more)"
                 table.add_row(r.id, r.submitted_at or "", fields)
 
             console.print(table)
-    finally:
-        if output_file and dest is not sys.stdout:
-            dest.close()
 
 
 @datasets_app.command("list")
@@ -186,6 +210,12 @@ def datasets_list(
     json_output: Annotated[
         bool, typer.Option("--json", help="Output as JSON to stdout")
     ] = False,
+    csv_output: Annotated[
+        bool, typer.Option("--csv", help="Output as CSV")
+    ] = False,
+    output_file: Annotated[
+        Optional[str], typer.Option("--output", "-o", help="Write output to file")
+    ] = None,
 ) -> None:
     """List all datasets (use dataset IDs for questions commands)."""
     try:
@@ -199,6 +229,16 @@ def datasets_list(
 
     if json_output:
         emit_json(items)
+        return
+
+    if csv_output:
+        headers = ["id", "name"]
+        rows = [
+            {"id": str(item.get("id", "")), "name": item.get("name", "")}
+            for item in items
+        ]
+        with output_dest(output_file) as dest:
+            emit_csv(headers, rows, dest)
         return
 
     table = Table(title="Datasets")
@@ -217,6 +257,12 @@ def questions_list(
     json_output: Annotated[
         bool, typer.Option("--json", help="Output as JSON to stdout")
     ] = False,
+    csv_output: Annotated[
+        bool, typer.Option("--csv", help="Output as CSV")
+    ] = False,
+    output_file: Annotated[
+        Optional[str], typer.Option("--output", "-o", help="Write output to file")
+    ] = None,
 ) -> None:
     """List all questions for a dataset."""
     try:
@@ -236,6 +282,22 @@ def questions_list(
 
     if json_output:
         emit_json([q.to_dict() for q in questions])
+        return
+
+    if csv_output:
+        headers = ["id", "name", "text", "type", "num_options"]
+        rows = [
+            {
+                "id": q.id,
+                "name": q.name,
+                "text": strip_html(q.text),
+                "type": q.type or "",
+                "num_options": str(len(q.answer_options)),
+            }
+            for q in questions
+        ]
+        with output_dest(output_file) as dest:
+            emit_csv(headers, rows, dest)
         return
 
     table = Table(title=f"Questions for Dataset {dataset_id}")

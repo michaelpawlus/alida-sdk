@@ -98,6 +98,7 @@ class TestToQuestion:
         assert isinstance(q, Question)
         assert q.id == "b52d9e99-f57c-48d9-ba7c-ff9649a662c1"
         assert q.survey_id == "ds-001"
+        assert q.name == "Long Answer"
         assert q.text == "<p>Share your favorite memory below.</p>"
         assert q.type == "OpenEnd"
         assert q.answer_options == []
@@ -105,6 +106,7 @@ class TestToQuestion:
     def test_maps_single_choice_with_options(self):
         data = _sample_concept_single_choice()
         q = QuestionResource._to_question("ds-001", data)
+        assert q.name == "Q2"
         assert q.type == "SingleChoice"
         assert len(q.answer_options) == 2
         assert q.answer_options[0].text == "Yes"

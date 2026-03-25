@@ -6,25 +6,27 @@ Python SDK and CLI for the Alida CXM platform API. Extracts survey data (surveys
 
 ```bash
 # List all surveys
-alida-sdk surveys list [--json]
+alida-sdk surveys list [--json] [--csv] [--output FILE]
 
 # Get survey details
 alida-sdk surveys get SURVEY_ID [--json]
 
 # Export survey responses (uses async batch workflow)
-alida-sdk surveys responses SURVEY_ID [--json] [--csv] [--output FILE]
+alida-sdk surveys responses SURVEY_ID [--json] [--csv] [--output FILE] [--dataset-id DATASET_ID]
 
 # List all datasets (needed to get dataset IDs for questions)
-alida-sdk datasets list [--json]
+alida-sdk datasets list [--json] [--csv] [--output FILE]
 
 # List all questions for a dataset
-alida-sdk questions list DATASET_ID [--json]
+alida-sdk questions list DATASET_ID [--json] [--csv] [--output FILE]
 
 # Get question details with answer options
 alida-sdk questions get DATASET_ID QUESTION_ID [--json]
 ```
 
-All commands support `--json` for machine-readable output to stdout. Human-readable output goes to stderr.
+All commands support `--json` for machine-readable output to stdout. List commands also support `--csv` and `--output FILE`. Human-readable output goes to stderr.
+
+The `--dataset-id` flag on `surveys responses` fetches question metadata to produce human-readable column headers (question text instead of concept names) and resolves choice IDs to text labels.
 
 Exit codes: 0 = success, 1 = error, 2 = not found.
 
@@ -43,14 +45,15 @@ When `ALIDA_CLIENT_ID`/`ALIDA_CLIENT_SECRET` are set, the SDK uses OAuth2 client
 
 ```
 src/alida_sdk/
-  exceptions.py  — Custom exception hierarchy (AlidaError base)
-  output.py      — JSON stdout / error output helpers
-  models.py      — Dataclasses: Survey, SurveyResponse, Question, AnswerOption, BatchExportStatus
-  auth.py        — TokenManager: env-var config, OAuth2 client_credentials, token cache/refresh
-  client.py      — AlidaClient: httpx wrapper, retry (429/5xx), link-based pagination, batch polling
-  surveys.py     — SurveyResource: list, get, get_responses (3-step batch export)
-  questions.py   — QuestionResource: list, get (via datasets/concepts API)
-  cli.py         — Typer CLI with surveys, datasets, and questions sub-command groups
+  exceptions.py   — Custom exception hierarchy (AlidaError base)
+  output.py       — JSON/CSV stdout helpers, output destination context manager
+  models.py       — Dataclasses: Survey, SurveyResponse, Question, AnswerOption, BatchExportStatus
+  auth.py         — TokenManager: env-var config, OAuth2 client_credentials, token cache/refresh
+  client.py       — AlidaClient: httpx wrapper, retry (429/5xx), link-based pagination, batch polling
+  surveys.py      — SurveyResource: list, get, get_responses (3-step batch export)
+  questions.py    — QuestionResource: list, get (via datasets/concepts API)
+  transforms.py   — Response flattening: column mapping, HTML stripping, choice resolution
+  cli.py          — Typer CLI with surveys, datasets, and questions sub-command groups
 ```
 
 ## Development

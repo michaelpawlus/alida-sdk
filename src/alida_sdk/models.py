@@ -71,6 +71,7 @@ class Question:
 
     id: str
     survey_id: str
+    name: str
     text: str
     type: str | None = None
     answer_options: list[AnswerOption] = field(default_factory=list)
@@ -80,6 +81,7 @@ class Question:
         return {
             "id": self.id,
             "survey_id": self.survey_id,
+            "name": self.name,
             "text": self.text,
             "type": self.type,
             "answer_options": [a.to_dict() for a in self.answer_options],
