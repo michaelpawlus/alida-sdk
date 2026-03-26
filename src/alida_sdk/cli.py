@@ -39,12 +39,26 @@ def surveys_list(
     output_file: Annotated[
         Optional[str], typer.Option("--output", "-o", help="Write output to file")
     ] = None,
+    status: Annotated[
+        Optional[str], typer.Option("--status", help="Filter by status (e.g. active, closed, draft)")
+    ] = None,
+    since: Annotated[
+        Optional[str], typer.Option("--since", help="Include surveys created at or after this ISO date")
+    ] = None,
+    until: Annotated[
+        Optional[str], typer.Option("--until", help="Include surveys created at or before this ISO date")
+    ] = None,
+    search: Annotated[
+        Optional[str], typer.Option("--search", help="Filter by name (case-insensitive substring)")
+    ] = None,
 ) -> None:
     """List all surveys."""
     try:
         with AlidaClient() as client:
             resource = SurveyResource(client)
-            surveys = resource.list_surveys()
+            surveys = resource.list_surveys(
+                status=status, since=since, until=until, search=search
+            )
     except NotFoundError as e:
         if json_output:
             emit_error(str(e), 2)
@@ -140,6 +154,12 @@ def surveys_responses(
         Optional[str],
         typer.Option("--dataset-id", help="Dataset ID for human-readable column headers"),
     ] = None,
+    since: Annotated[
+        Optional[str], typer.Option("--since", help="Include responses submitted at or after this ISO date")
+    ] = None,
+    until: Annotated[
+        Optional[str], typer.Option("--until", help="Include responses submitted at or before this ISO date")
+    ] = None,
 ) -> None:
     """Export all responses for a survey."""
     structured = json_output or csv_output
@@ -148,7 +168,7 @@ def surveys_responses(
             resource = SurveyResource(client)
             if not structured:
                 console.print(f"Exporting responses for survey {survey_id}...")
-            responses = resource.get_responses(survey_id)
+            responses = resource.get_responses(survey_id, since=since, until=until)
 
             questions = None
             if dataset_id:
@@ -216,11 +236,20 @@ def datasets_list(
     output_file: Annotated[
         Optional[str], typer.Option("--output", "-o", help="Write output to file")
     ] = None,
+    search: Annotated[
+        Optional[str], typer.Option("--search", help="Filter by name (case-insensitive substring)")
+    ] = None,
 ) -> None:
     """List all datasets (use dataset IDs for questions commands)."""
     try:
         with AlidaClient() as client:
             items = client.get_paginated("datasets")
+            if search:
+                search_lower = search.lower()
+                items = [
+                    i for i in items
+                    if search_lower in (i.get("name") or "").lower()
+                ]
     except AlidaError as e:
         if json_output:
             emit_error(str(e), 1)
@@ -263,12 +292,15 @@ def questions_list(
     output_file: Annotated[
         Optional[str], typer.Option("--output", "-o", help="Write output to file")
     ] = None,
+    search: Annotated[
+        Optional[str], typer.Option("--search", help="Filter by question name or text (case-insensitive)")
+    ] = None,
 ) -> None:
     """List all questions for a dataset."""
     try:
         with AlidaClient() as client:
             resource = QuestionResource(client)
-            questions = resource.list_questions(dataset_id)
+            questions = resource.list_questions(dataset_id, search=search)
     except NotFoundError as e:
         if json_output:
             emit_error("Dataset not found", 2)

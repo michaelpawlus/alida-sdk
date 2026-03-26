@@ -27,6 +27,7 @@ class QuestionResource:
         dataset_id: str,
         *,
         include_system: bool = False,
+        search: str | None = None,
     ) -> list[Question]:
         """List all questions for a dataset.
 
@@ -34,6 +35,7 @@ class QuestionResource:
             dataset_id: The dataset ID (from ``datasets`` endpoint).
             include_system: If True, include system questions
                 (DisplayType, RespondentLocale, etc.).
+            search: Case-insensitive substring match on question name or text.
         """
         concepts = self._client.get_paginated(
             f"datasets/{dataset_id}/concepts"
@@ -46,6 +48,15 @@ class QuestionResource:
             if not include_system and "systemquestion" in tags:
                 continue
             questions.append(self._to_question(dataset_id, concept))
+
+        if search:
+            search_lower = search.lower()
+            questions = [
+                q
+                for q in questions
+                if search_lower in q.name.lower() or search_lower in q.text.lower()
+            ]
+
         return questions
 
     def get_question(self, dataset_id: str, question_id: str) -> Question:

@@ -13,10 +13,39 @@ class SurveyResource:
     def __init__(self, client: AlidaClient):
         self._client = client
 
-    def list_surveys(self) -> list[Survey]:
-        """List all surveys with auto-pagination."""
+    def list_surveys(
+        self,
+        *,
+        status: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        search: str | None = None,
+    ) -> list[Survey]:
+        """List all surveys with auto-pagination and optional filtering.
+
+        Filters compose with AND logic — all specified conditions must match.
+
+        Args:
+            status: Filter by survey status (case-insensitive).
+            since: Include surveys created at or after this ISO 8601 date.
+            until: Include surveys created at or before this ISO 8601 date.
+            search: Case-insensitive substring match on survey name.
+        """
         items = self._client.get_paginated("activities")
-        return [self._to_survey(item) for item in items]
+        surveys = [self._to_survey(item) for item in items]
+
+        if status:
+            status_lower = status.lower()
+            surveys = [s for s in surveys if s.status.lower() == status_lower]
+        if search:
+            search_lower = search.lower()
+            surveys = [s for s in surveys if search_lower in s.name.lower()]
+        if since:
+            surveys = [s for s in surveys if s.created_at and s.created_at >= since]
+        if until:
+            surveys = [s for s in surveys if s.created_at and s.created_at <= until]
+
+        return surveys
 
     def get_survey(self, survey_id: str) -> Survey:
         """Get a single survey by ID."""
@@ -27,10 +56,19 @@ class SurveyResource:
         self,
         survey_id: str,
         field_ids: list[str] | None = None,
+        *,
+        since: str | None = None,
+        until: str | None = None,
     ) -> list[SurveyResponse]:
         """Export all responses for a survey using the batch export workflow.
 
         Steps: POST to initiate batch -> poll status -> download results.
+
+        Args:
+            survey_id: The survey (activity) ID.
+            field_ids: Optional list of field IDs to include.
+            since: Include responses submitted at or after this ISO 8601 date.
+            until: Include responses submitted at or before this ISO 8601 date.
         """
         # Step 1: Initiate batch export
         body: dict = {}
@@ -60,7 +98,18 @@ class SurveyResource:
             if isinstance(response_data, list)
             else response_data.get("data", [])
         )
-        return [self._to_response(survey_id, item) for item in items]
+        responses = [self._to_response(survey_id, item) for item in items]
+
+        if since:
+            responses = [
+                r for r in responses if r.submitted_at and r.submitted_at >= since
+            ]
+        if until:
+            responses = [
+                r for r in responses if r.submitted_at and r.submitted_at <= until
+            ]
+
+        return responses
 
     @staticmethod
     def _to_survey(data: dict) -> Survey:

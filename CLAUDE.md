@@ -5,26 +5,35 @@ Python SDK and CLI for the Alida CXM platform API. Extracts survey data (surveys
 ## CLI Commands
 
 ```bash
-# List all surveys
-alida-sdk surveys list [--json] [--csv] [--output FILE]
+# List all surveys (with optional filters)
+alida-sdk surveys list [--json] [--csv] [--output FILE] [--status STATUS] [--since DATE] [--until DATE] [--search TEXT]
 
 # Get survey details
 alida-sdk surveys get SURVEY_ID [--json]
 
 # Export survey responses (uses async batch workflow)
-alida-sdk surveys responses SURVEY_ID [--json] [--csv] [--output FILE] [--dataset-id DATASET_ID]
+alida-sdk surveys responses SURVEY_ID [--json] [--csv] [--output FILE] [--dataset-id DATASET_ID] [--since DATE] [--until DATE]
 
 # List all datasets (needed to get dataset IDs for questions)
-alida-sdk datasets list [--json] [--csv] [--output FILE]
+alida-sdk datasets list [--json] [--csv] [--output FILE] [--search TEXT]
 
 # List all questions for a dataset
-alida-sdk questions list DATASET_ID [--json] [--csv] [--output FILE]
+alida-sdk questions list DATASET_ID [--json] [--csv] [--output FILE] [--search TEXT]
 
 # Get question details with answer options
 alida-sdk questions get DATASET_ID QUESTION_ID [--json]
 ```
 
 All commands support `--json` for machine-readable output to stdout. List commands also support `--csv` and `--output FILE`. Human-readable output goes to stderr.
+
+### Filtering
+
+Filters compose with AND logic — all specified conditions must match. Date values are ISO 8601 strings (e.g., `2025-01-01`, `2025-01-15T00:00:00Z`).
+
+- `--status STATUS` — Filter surveys by status (e.g., `active`, `closed`, `draft`). Case-insensitive.
+- `--since DATE` — Include items created/submitted at or after this date.
+- `--until DATE` — Include items created/submitted at or before this date.
+- `--search TEXT` — Case-insensitive substring match on name/text fields.
 
 The `--dataset-id` flag on `surveys responses` fetches question metadata to produce human-readable column headers (question text instead of concept names) and resolves choice IDs to text labels.
 

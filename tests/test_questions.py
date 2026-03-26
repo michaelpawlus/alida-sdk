@@ -189,6 +189,61 @@ class TestListQuestions:
         assert len(questions) == 2
 
 
+class TestListQuestionsSearch:
+    def test_search_by_text(self):
+        mock_client = MagicMock()
+        mock_client.get_paginated.return_value = [
+            _sample_concept_open_end(),
+            _sample_concept_single_choice(),
+        ]
+        resource = QuestionResource(mock_client)
+        results = resource.list_questions("ds-001", search="permission")
+        assert len(results) == 1
+        assert results[0].name == "Q2"
+
+    def test_search_by_name(self):
+        mock_client = MagicMock()
+        mock_client.get_paginated.return_value = [
+            _sample_concept_open_end(),
+            _sample_concept_single_choice(),
+        ]
+        resource = QuestionResource(mock_client)
+        results = resource.list_questions("ds-001", search="Long Answer")
+        assert len(results) == 1
+        assert results[0].type == "OpenEnd"
+
+    def test_search_case_insensitive(self):
+        mock_client = MagicMock()
+        mock_client.get_paginated.return_value = [
+            _sample_concept_open_end(),
+            _sample_concept_single_choice(),
+        ]
+        resource = QuestionResource(mock_client)
+        results = resource.list_questions("ds-001", search="MEMORY")
+        assert len(results) == 1
+        assert results[0].name == "Long Answer"
+
+    def test_search_no_match(self):
+        mock_client = MagicMock()
+        mock_client.get_paginated.return_value = [
+            _sample_concept_open_end(),
+            _sample_concept_single_choice(),
+        ]
+        resource = QuestionResource(mock_client)
+        results = resource.list_questions("ds-001", search="nonexistent")
+        assert results == []
+
+    def test_search_without_filter_returns_all(self):
+        mock_client = MagicMock()
+        mock_client.get_paginated.return_value = [
+            _sample_concept_open_end(),
+            _sample_concept_single_choice(),
+        ]
+        resource = QuestionResource(mock_client)
+        results = resource.list_questions("ds-001")
+        assert len(results) == 2
+
+
 class TestGetQuestion:
     def test_fetches_single_concept(self):
         mock_client = MagicMock()

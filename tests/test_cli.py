@@ -84,6 +84,44 @@ class TestSurveysList:
         assert "status" in reader.fieldnames
 
 
+class TestSurveysListFilters:
+    @patch("alida_sdk.cli.AlidaClient")
+    @patch("alida_sdk.cli.SurveyResource")
+    def test_passes_status_filter(self, mock_resource_cls: MagicMock, mock_client_cls: MagicMock):
+        mock_resource = MagicMock()
+        mock_resource.list_surveys.return_value = _make_surveys()[:1]
+        mock_resource_cls.return_value = mock_resource
+        mock_client_cls.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = runner.invoke(app, ["surveys", "list", "--json", "--status", "active"])
+        assert result.exit_code == 0
+        mock_resource.list_surveys.assert_called_once_with(
+            status="active", since=None, until=None, search=None
+        )
+
+    @patch("alida_sdk.cli.AlidaClient")
+    @patch("alida_sdk.cli.SurveyResource")
+    def test_passes_all_filters(self, mock_resource_cls: MagicMock, mock_client_cls: MagicMock):
+        mock_resource = MagicMock()
+        mock_resource.list_surveys.return_value = []
+        mock_resource_cls.return_value = mock_resource
+        mock_client_cls.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = runner.invoke(app, [
+            "surveys", "list", "--json",
+            "--status", "active",
+            "--since", "2025-01-01",
+            "--until", "2025-06-30",
+            "--search", "satisfaction",
+        ])
+        assert result.exit_code == 0
+        mock_resource.list_surveys.assert_called_once_with(
+            status="active", since="2025-01-01", until="2025-06-30", search="satisfaction"
+        )
+
+
 class TestSurveysGet:
     @patch("alida_sdk.cli.AlidaClient")
     @patch("alida_sdk.cli.SurveyResource")
@@ -213,6 +251,27 @@ class TestSurveysResponses:
         assert rows[0]["How satisfied are you?"] == "Very satisfied"
 
 
+class TestSurveysResponsesFilters:
+    @patch("alida_sdk.cli.AlidaClient")
+    @patch("alida_sdk.cli.SurveyResource")
+    def test_passes_date_filters(self, mock_resource_cls: MagicMock, mock_client_cls: MagicMock):
+        mock_resource = MagicMock()
+        mock_resource.get_responses.return_value = _make_responses()[:1]
+        mock_resource_cls.return_value = mock_resource
+        mock_client_cls.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = runner.invoke(app, [
+            "surveys", "responses", "survey-001", "--json",
+            "--since", "2025-01-01",
+            "--until", "2025-01-31",
+        ])
+        assert result.exit_code == 0
+        mock_resource.get_responses.assert_called_once_with(
+            "survey-001", since="2025-01-01", until="2025-01-31"
+        )
+
+
 class TestDatasetsList:
     @patch("alida_sdk.cli.AlidaClient")
     def test_csv_output(self, mock_client_cls: MagicMock):
@@ -231,6 +290,25 @@ class TestDatasetsList:
         assert len(rows) == 2
         assert rows[0]["id"] == "ds1"
         assert rows[0]["name"] == "Dataset One"
+
+
+class TestDatasetsListSearch:
+    @patch("alida_sdk.cli.AlidaClient")
+    def test_search_filters_datasets(self, mock_client_cls: MagicMock):
+        mock_client = MagicMock()
+        mock_client.get_paginated.return_value = [
+            {"id": "ds1", "name": "Customer Data"},
+            {"id": "ds2", "name": "Employee Data"},
+            {"id": "ds3", "name": "Product Metrics"},
+        ]
+        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
+        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = runner.invoke(app, ["datasets", "list", "--json", "--search", "data"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert len(data) == 2
+        assert {d["id"] for d in data} == {"ds1", "ds2"}
 
 
 class TestQuestionsList:
@@ -293,6 +371,21 @@ class TestQuestionsList:
         assert rows[0]["name"] == "Q1"
         assert rows[0]["text"] == "How satisfied are you?"
         assert rows[0]["num_options"] == "2"
+
+
+class TestQuestionsListSearch:
+    @patch("alida_sdk.cli.AlidaClient")
+    @patch("alida_sdk.cli.QuestionResource")
+    def test_passes_search_filter(self, mock_resource_cls: MagicMock, mock_client_cls: MagicMock):
+        mock_resource = MagicMock()
+        mock_resource.list_questions.return_value = _make_questions()[:1]
+        mock_resource_cls.return_value = mock_resource
+        mock_client_cls.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = runner.invoke(app, ["questions", "list", "s1", "--json", "--search", "satisfied"])
+        assert result.exit_code == 0
+        mock_resource.list_questions.assert_called_once_with("s1", search="satisfied")
 
 
 class TestQuestionsGet:
